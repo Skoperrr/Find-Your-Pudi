@@ -1,0 +1,25 @@
+"$schema" = "https://openapi.vercel.sh/vercel.json"
+
+[services.backend]
+root = "backend"
+framework = "fastapi"
+entrypoint = "asgi:app"
+
+[services.frontend]
+root = "frontend"
+framework = "vite"
+
+[[rewrites]]
+source = "/api/(.*)"
+destination = { service = "backend" }
+
+[[rewrites]]
+source = "/(.*)"
+destination = { service = "frontend" }
+
+# The relay is a pull-based worker, not an HTTP service.
+[daemons.relay]
+root = "."
+entrypoint = "Dockerfile"
+command = ["python", "-m", "backend.relay_worker"]
+instances.iad1 = 1
