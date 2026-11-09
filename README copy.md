@@ -102,3 +102,28 @@ npm run build
 ```
 
 Primary documentation: https://postgis.net/docs/ST_DWithin.html ; https://www.postgresql.org/docs/current/indexes-expressional.html ; https://magicstack.github.io/asyncpg/current/usage.html ; https://fastapi.tiangolo.com/advanced/websockets/ ; https://redis.io/docs/latest/develop/pubsub/ ; https://visgl.github.io/react-map-gl/docs/api-reference/mapbox/map ; https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers
+
+## Vercel deployment (Services + Daemon)
+
+This repository is configured as one Vercel project with two HTTP services and one background Daemon. The root project configuration is `vercel.toml` because Vercel accepts only one project configuration file; TOML supports both the Services routing and Daemons configuration.
+
+- Set the Vercel project's framework to **Services** in Project Settings.
+- `frontend` is public at `/` and receives all paths other than `/api/*`.
+- `backend` is public at `/api/*`; FastAPI keeps its existing `/api` route prefix. The backend ASGI entrypoint is `backend/asgi.py`.
+- `relay` is a private background Daemon. It polls PostgreSQL's transactional `chat_outbox` and publishes committed chat events to Redis. It is not an HTTP service and has no public route or service binding.
+- The Daemon is configured for one instance in `iad1`; change `instances.iad1` in `vercel.toml` if your database/Redis placement calls for another supported region.
+
+Configure these Vercel environment variables for the relevant Production/Preview/Development environments:
+
+- `DATABASE_URL` — PostgreSQL connection string for the API and relay worker.
+- `REDIS_URL` — Redis connection string for the API and relay worker.
+- `REDIS_NAMESPACE` — optional; defaults to `pudi:production` and must match for API and worker.
+- `ALLOWED_ORIGINS` — JSON array of exact HTTPS site origins, e.g. `["https://your-domain.example"]`.
+- `CURSOR_SIGNING_KEY` — random secret of at least 32 characters.
+- `VITE_MAPBOX_ACCESS_TOKEN` — public, URL-restricted Mapbox `pk.` token for the frontend build.
+
+Apply the database migrations separately with an administrator connection before sending production traffic. Use restricted runtime database credentials for the API/worker. Do not put database or Redis secrets in `VITE_` variables.
+
+The API no longer starts a best-effort relay loop inside each serverless instance; the dedicated Daemon owns that loop. This prevents duplicate worker loops from being coupled to request-instance startup and shutdown. The worker handles SIGTERM/SIGINT by closing its Redis and PostgreSQL connections cleanly.
+
+For local development, the existing Vite proxy continues to send `/api` and WebSocket traffic to `127.0.0.1:8000`. Vercel's local multi-service development can be exercised with `vercel dev`; Daemon execution and service behavior should also be validated in a linked Vercel Preview deployment.
