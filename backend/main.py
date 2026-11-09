@@ -18,7 +18,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from .cursors import decode_cursor, encode_cursor, fingerprint
+try:
+    from .cursors import decode_cursor, encode_cursor, fingerprint
+except ImportError:  # Vercel loads this module from the backend service root.
+    from cursors import decode_cursor, encode_cursor, fingerprint
 
 log = logging.getLogger("pudi")
 SEARCH_SQL = Path(__file__).with_name("search.sql").read_text()
@@ -183,13 +186,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             await redis.ping()
             app.state.pool, app.state.redis = pool, redis
-            relay = asyncio.create_task(relay_outbox(pool, redis, settings.redis_namespace))
-            try:
-                yield
-            finally:
-                relay.cancel()
-                with suppress(asyncio.CancelledError):
-                    await relay
+            # The durable outbox relay runs in the separately deployed Vercel Daemon.
+            # Keep API instances focused on request handling and WebSocket pub/sub.
+            yield
         finally:
             await redis.aclose()
             await pool.close()
