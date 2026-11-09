@@ -9,6 +9,10 @@ entrypoint = "asgi:app"
 root = "frontend"
 framework = "vite"
 
+[[services.frontend.rewrites]]
+source = "/(.*)"
+destination = "/index.html"
+
 [[rewrites]]
 source = "/api/(.*)"
 destination = { service = "backend" }
